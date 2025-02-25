@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -53,11 +54,13 @@ func HomePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetQuote(w http.ResponseWriter, r *http.Request) {
+	var timeout time.Duration
 	ctx, _ := context.WithTimeoutCause(context.Background(), 200*time.Millisecond, errTimeoutFailure)
 	req, _ := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
 	log.Println("Request iniciada")
 	defer log.Println("Request finalizada")
 	res, err := http.DefaultClient.Do(req)
+	// Verifica se houve erro na chamada ao integrador e retorna um HTTP Status Code adequado
 	if err != nil {
 		switch ctx.Err() {
 		case context.DeadlineExceeded:
@@ -84,7 +87,14 @@ func GetQuote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Falha ao codificar a resposta", http.StatusBadRequest)
 		return
 	}
-	ctxDB, cancel := context.WithTimeoutCause(context.Background(), 10*time.Millisecond, errTimeoutDatabase)
+	dbTimeout := r.URL.Query().Get("timeout")
+	if dbTimeout != "" {
+		t, _ := strconv.Atoi(dbTimeout)
+		timeout = time.Duration(t) * time.Millisecond
+	} else {
+		timeout = 10 * time.Millisecond
+	}
+	ctxDB, cancel := context.WithTimeoutCause(context.Background(), timeout, errTimeoutDatabase)
 	defer cancel()
 	errCreate := SaveData(ctxDB, UsdBrl.USDBRL)
 	if errCreate != nil {
